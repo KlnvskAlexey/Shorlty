@@ -1,35 +1,36 @@
 package com.example.task1
 
-import com.example.task1.model.ShortlyModel
+import androidx.lifecycle.LiveData
+import com.example.task1.db.model.ShortlyModel
+import kotlinx.coroutines.Job
 
 class Contract {
 
     interface View {
 
-        fun showMainFragment()
+        fun showToastLinkAlreadyInHistory()
 
-        fun showHistoryFragment()
-
-        fun showToastCopiedSuccessfully(textToShow: String)
-
-        fun showToastDeletedSuccessfully()
-
-        fun updateRecyclerViewAdapter(response: ShortlyModel)
-
-        fun showInputErrorMessage()
-
-        fun showToastItemAlreadyInDB()
+        fun showMessageInputError()
     }
 
-    interface Presenter {
-        fun handleCopyButtonClick(textToCopy: String)
+    interface ViewModel {
 
-        fun handleDeleteButtonClick(keyOriginalLink: String, keyShortedLink: String)
+        fun initDataBase()
 
-        fun handleButtonShortenItClick(query: String)
+        fun getAllHistoryLinks(): LiveData<List<ShortlyModel>>
+
+        fun insert(shortlyModel: ShortlyModel, onSuccess: () -> Unit): Job
+
+        fun delete(shortlyModel: ShortlyModel, onSuccess: () -> Unit): Job
+
+        fun deleteById(id: Int, onSuccess: () -> Unit): Job
+
+        fun update(shortlyModel: ShortlyModel, onSuccess: () -> Unit): Job
+
+        fun handleButtonShortenItClick(linkToShorten: String, vmListener: ViewModelListener)
     }
 
-    interface Service {
-        fun getResponseBody(urlQuery: String, serviceListener: ServiceListener)
+    interface Model {
+        fun getResponse(urlQuery: String, serviceListener: ServiceListener)
     }
 }

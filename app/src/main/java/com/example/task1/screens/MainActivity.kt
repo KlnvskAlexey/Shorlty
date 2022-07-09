@@ -1,137 +1,107 @@
 package com.example.task1.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.view.View.OnClickListener
-import android.widget.Button
-import android.widget.EditText
+import android.util.Log
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.ViewModelProvider
+import androidx.core.widget.addTextChangedListener
 import com.example.task1.*
-import com.example.task1.adapter.RecyclerViewAdapter
-import com.example.task1.model.ShortlyModel
+import com.example.task1.databinding.ActivityMainBinding
+import com.example.task1.db.model.ShortlyModel
+import org.koin.androidx.viewmodel.ext.android.viewModel
 
 
 class MainActivity : AppCompatActivity(), Contract.View {
 
-    private lateinit var presenter: PresenterImpl
-    private lateinit var button: Button
-    private lateinit var editText: EditText
-    private lateinit var viewModel: MyViewModel
-    private lateinit var recyclerViewAdapter: RecyclerViewAdapter
+    private lateinit var binding: ActivityMainBinding
+    private val vm by viewModel<MainViewModel>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        vm.initDataBase()
 
-        APP = this
-        button = findViewById(R.id.buttonShortenIt)
-        editText = findViewById(R.id.editTextShortenLink)
-        presenter = PresenterImpl(this, ServiceImpl())
-        PRESENTER = presenter
-        recyclerViewAdapter = RecyclerViewAdapter(presenter)
-        RECYCLERVIEWADAPTER = recyclerViewAdapter
-        viewModel = ViewModelProvider(this)[MyViewModel::class.java]
-        viewModel.initDataBase()
-       // viewModel.getAllShortly()
-        VIEWMODEL = viewModel
-        VIEWMODEL.getAllShortly().observe(APP) { listShortly ->
-            recyclerViewAdapter.updateArrayAdapter(listShortly.asReversed())
+        binding.editTextShortenLinkMain.addTextChangedListener {
+            binding.editTextShortenLinkMain.hint = "Shorten a link here ..."
+            binding.editTextShortenLinkMain.setHintTextColor(this.getColor(R.color.hint_color))
+            binding.editTextShortenLinkMain.setBackgroundResource(R.drawable.body_for_edit_text)
         }
 
-        showMainFragment()
+        binding.buttonShortenItMain.setOnClickListener {
+            onButtonShortenItClick()
+        }
+    }
 
-        editText.setOnClickListener(OnClickListener {
-            editText.hint = "Shorten a link here ..."
-            editText.setHintTextColor(Color.WHITE)
-            editText.setBackgroundResource(R.drawable.body_for_edit_text)
-        })
+    private fun onButtonShortenItClick() {
+        val imm = baseContext.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(currentFocus?.windowToken, 0)
 
-        button.setOnClickListener(OnClickListener {
-            if (editText.text.toString() == "") {
-                editText.hint = "Please add a link here"
-                editText.setHintTextColor(Color.RED)
-                editText.setBackgroundResource(R.drawable.body_for_edit_text_error)
-            } else {
-                presenter.handleButtonShortenItClick(editText.text.toString().trim())
+        if (binding.editTextShortenLinkMain.text.toString() == "") {
+            binding.editTextShortenLinkMain.hint = "Please add a link here"
+            binding.editTextShortenLinkMain.setHintTextColor(Color.RED)
+            binding.editTextShortenLinkMain.setBackgroundResource(R.drawable.body_for_edit_text_error);
+
+        } else {
+            val linkToShorten: String = binding.editTextShortenLinkMain.text.toString().trim()
+            vm.handleButtonShortenItClick(linkToShorten, object : ViewModelListener {
+                override fun onServiceSuccess(response: ShortlyModel) {
+                    if (RV_ITEMS.isEmpty()) {
+                        binding.editTextShortenLinkMain.text.clear()
+                        showHistoryActivity()
+                        vm.insert(response) {}
+                    } else {
+                        var copies = 0
+                        for (item in RV_ITEMS) {
+                            if (item.originalLink == response.originalLink) {
+                                showToastLinkAlreadyInHistory()
+                                copies += 1
+                                break
+                            }
+                        }
+                        if (copies == 0) {
+                            binding.editTextShortenLinkMain.text.clear()
+                            showHistoryActivity()
+                            vm.insert(response) {}
+                        }
+                    }
+                }
+
+                override fun onFailure(throwable: Throwable) {
+                    throwable.localizedMessage?.let { Log.e("PENA", it) }
+                }
+
+                override fun onIncorrectTextQueryInput() {
+                    showMessageInputError()
+                }
+
+                override fun onItemAlreadyInDataBase() {
+                    showToastLinkAlreadyInHistory()
+                    showHistoryActivity()
+                }
             }
-        })
-    }
-
-    fun insertInRoom(shortlyModel: ShortlyModel) {
-        viewModel.insert(shortlyModel) {}
-    }
-
-    fun deleteRoom(shortlyModel: ShortlyModel) {
-        viewModel.delete(shortlyModel) {}
-    }
-
-    override fun showMainFragment() {
-        supportFragmentManager
-            .beginTransaction()
-            .replace(R.id.place_holder, MainFragment.newInstance())
-            .commit()
-    }
-
-    override fun showHistoryFragment() {
-        if (supportFragmentManager.backStackEntryCount == 0) {
-            supportFragmentManager
-                .beginTransaction()
-                .replace(
-                    R.id.place_holder,
-                    //  HistoryFragment.newInstance(recyclerAdapter = recyclerViewAdapter)
-                    HistoryFragment.newInstance()
-                )
-                .addToBackStack(null)
-                .commit()
-        } else {
-            supportFragmentManager
-                .beginTransaction()
-                .replace(
-                    R.id.place_holder,
-//                    HistoryFragment.newInstance(recyclerAdapter = recyclerViewAdapter)
-                    HistoryFragment.newInstance()
-                )
-                .commit()
+            )
         }
     }
 
-    override fun onBackPressed() {
-        if (supportFragmentManager.backStackEntryCount > 0) {
-            supportFragmentManager.popBackStackImmediate()
-        } else {
-            super.onBackPressed();
-        }
+    fun showHistoryActivity() {
+        val intent = Intent(this, HistoryActivity::class.java)
+        startActivity(intent)
     }
 
-    override fun showToastCopiedSuccessfully(textToShowCopied: String) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(textToShowCopied, textToShowCopied)
-        clipboard.setPrimaryClip(clip)
-        Toast.makeText(this, "COPIED!", Toast.LENGTH_SHORT).show()
-    }
-
-    override fun showToastDeletedSuccessfully() {
-        Toast.makeText(this, "DELETED!", Toast.LENGTH_SHORT).show()
-    }
-
-    override fun updateRecyclerViewAdapter(response: ShortlyModel) {
-        recyclerViewAdapter.insertDataInROOM(response)
-    }
-
-    override fun showInputErrorMessage() {
-        editText.hint = "invalid url ..."
-        editText.setHintTextColor(Color.RED)
-        editText.setBackgroundResource(R.drawable.body_for_edit_text_error)
-        editText.text = null
-    }
-
-    override fun showToastItemAlreadyInDB() {
-        Toast.makeText(this, "This link is already in your list of History", Toast.LENGTH_SHORT)
+    override fun showToastLinkAlreadyInHistory() {
+        Toast.makeText(this, "This link is already in your History", Toast.LENGTH_SHORT)
             .show()
+    }
+
+    override fun showMessageInputError() {
+        binding.editTextShortenLinkMain.text = null
+        binding.editTextShortenLinkMain.hint = "invalid url ..."
+        binding.editTextShortenLinkMain.setHintTextColor(Color.RED)
+        binding.editTextShortenLinkMain.setBackgroundResource(R.drawable.body_for_edit_text_error)
     }
 }
